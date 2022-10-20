@@ -14,10 +14,18 @@ const getUsersDb = () => {
     );
 };
 
-const isAuthenticated = ({email, password}) => {
+const isAuthenticated = ({email, password}) => {   //找尋email和password是否被註冊過
     return (
         getUsersDb().users.findIndex(   //得到數字串
             user => user.email === email && user.password === password   //驗證是否一樣
+        ) !==-1   //相等會大於1 不相等會=-1
+    );
+};
+
+const isExist = ({email}) => {   //找尋email是否有一樣的
+    return (
+        getUsersDb().users.findIndex(   //得到數字串
+            user => user.email === email   //驗證是否一樣
         ) !==-1   //相等會大於1 不相等會=-1
     );
 };
@@ -26,7 +34,7 @@ const isAuthenticated = ({email, password}) => {
 const SECRET = '2d5f6e2set813sgr8';
 const expiresIn = '1h'
 const createToken = payload => {   //payload 服務端返回給客戶端的數據
-    return jwt.sign(payload, SECRET, {expiresIn })   ///sign方法:傳遞三個參數 1.payload 2.SECRET簽名用的key 3.設置性的參數,例如時間
+    return jwt.sign(payload, SECRET, { expiresIn }  )   ///sign方法:傳遞三個參數 1.payload 2.SECRET簽名用的key 3.設置性的參數,例如時間
 }
 
 //api登入
@@ -45,7 +53,7 @@ server.post('/auth/login', (req, res) => {
     } else {
         const status = 401;
         const message = 'Incorrect email or password';
-        return res.status(status).json({status, message})
+        return res.status(status).json({ status, message })
     }
 });
 
@@ -54,7 +62,7 @@ server.post('/auth/register', (req, res) => {
     const { nickname, email, password, type } = req.body;
 
     //1.查詢是否註冊過
-    if (isAuthenticated({ email, password })) {
+    if (isExist({email})) {
         const status = 401;
         const message = 'Email and Password already exist';
         return res.status(status).json({ status, message });
@@ -89,9 +97,46 @@ server.post('/auth/register', (req, res) => {
     });
 
     //建立token
-    const jwToken = createToken({nickname, type, email});  //用{nickname, type, email}生成jwt
+    const jwToken = createToken({ nickname, type, email });  //用{nickname, type, email}生成jwt
     return res.status(200).json(jwToken);
 });
+
+
+//通過jwt認證來獲取carts的資料保護顯示
+server.use('/carts', (req, res, next) => {
+    if (
+        req.headers.authorization === undefined ||   //查看req的頭部資料是否有值，如果沒有值或是不是以Bearer為開頭(連接jwt)
+        req.headers.authorization.split(' ')[0] !== 'Bearer'
+    ) {
+        const status = 401;   //失敗 401 顯示提示訊息
+        const message = 'Error in authorization format';
+        res.status(status).json({ status, message });
+        return;
+    }
+    try {
+        const verifyTokenResult = verifyToken(   //把jwt帶過來後看是否有效
+            req.headers.authorization.split(' ')[1]
+        );
+        if (verifyTokenResult instanceof Error) {   //驗證錯誤
+            const status = 401;
+            const message = 'Access token not provided';
+            res.status(status).json({ status, message });
+            return;
+        }
+        next();   //驗證成功 調用next，處理原本的carts請求
+    }   catch (err) {
+        const status = 401;
+        const message ='Error token is revoked';
+        res.status(status).json({ status, message });
+    }
+});
+///驗證的方法
+const verifyToken = token => {
+    return jwt.verify(token, SECRET, (err, decode) =>
+        decode !== undefined ? decode : err
+    );
+};
+
 
 server.use(router);
 server.listen(3004, () => {   //監聽一個ˇ端口號3004
